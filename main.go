@@ -5,20 +5,26 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
 )
 
-var apiURL = flag.String("url", "", "send log via loki api using the provided url (e.g http://localhost:3100/api/prom/push)")
-var logPerSec = flag.Int64("logps", 500, "The total amount of log per second to generate.(default 500)")
+var (
+	apiURL      = flag.String("url", "", "send log via loki api using the provided url (e.g http://localhost:3100/api/prom/push)")
+	logPerSec   = flag.Int64("logps", 500, "The total amount of log per second to generate.(default 500)")
+	randomPanic = flag.Duration("panic-after", 0, "generate random panics")
+)
 
 func init() {
 	lvl := logging.Level{}
@@ -27,9 +33,19 @@ func init() {
 	}
 	util.InitLogger(&server.Config{LogLevel: lvl})
 	flag.Parse()
+	http.Handle("/metrics", promhttp.Handler())
 }
 
 func main() {
+	go func() {
+		_ = http.ListenAndServe(":2112", nil)
+	}()
+	if *randomPanic != 0 {
+		go func() {
+			time.Sleep(time.Duration(rand.Int63n(int64(*randomPanic))))
+			thedeepstack()
+		}()
+	}
 	host, err := os.Hostname()
 	if err != nil {
 		panic(err)
@@ -50,7 +66,7 @@ func main() {
 			stream = "stdout"
 
 		}
-		fmt.Fprintf(out, "ts=%s stream=%s host=%s lvl=%s msg=%s \n", time.Now().Format(time.RFC3339Nano), stream, host, randLevel(), randomLog())
+		fmt.Fprintf(out, "ts=%s stream=%s component=%s host=%s lvl=%s msg=%s \n", time.Now().Format(time.RFC3339Nano), stream, randComponent(), host, randLevel(), strconv.Quote(randomLog()))
 		time.Sleep(time.Second / time.Duration(*logPerSec))
 	}
 }
@@ -100,7 +116,6 @@ func randLevel() model.LabelValue {
 
 func randComponent() model.LabelValue {
 	return components[rand.Intn(5)]
-
 }
 
 func randService() model.LabelValue {
@@ -111,7 +126,7 @@ var loglines = []string{
 	"failing to cook potatoes",
 	"successfully launched a car in space",
 	"we got here",
-	"panic: could not read the manual",
+	"err: could not read the manual",
 	"error while reading floppy disk",
 	"failed to reach the cloud, try again on a rainy day",
 	"failed to get an error message",
@@ -133,7 +148,7 @@ var loglines = []string{
 	"I used stack overflow to fix this bug",
 	"try googling this error message if it appears again",
 	"change stuff and see what happens",
-	"panic: this should never happen",
+	"err: this should never happen",
 }
 
 var levels = []model.LabelValue{
@@ -158,4 +173,22 @@ var services = []model.LabelValue{
 	"random-policies-generator",
 	"cookie-jar",
 	"distributed-unicorn",
+}
+
+func thedeepstack() {
+	reallydeep()
+}
+
+func reallydeep() {
+	deepdown()
+}
+
+func deepdown() {
+	switch rand.Intn(2) {
+	case 1:
+		i := 0
+		fmt.Print(10 / i)
+	default:
+		panic("File read error: open /proc/diskstats: too many open files")
+	}
 }

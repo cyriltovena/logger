@@ -10,6 +10,7 @@ require (
 	github.com/gorilla/mux v1.7.3 // indirect
 	github.com/grafana/loki v0.3.0
 	github.com/opentracing-contrib/go-stdlib v0.0.0-20190519235532-cf7a6c988dc9 // indirect
+	github.com/prometheus/client_golang v1.0.0
 	github.com/prometheus/common v0.4.1
 	github.com/stretchr/testify v1.4.0 // indirect
 	github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4

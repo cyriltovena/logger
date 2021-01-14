@@ -1,11 +1,17 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: logger
+  namespace: dev
   labels:
     app: logger
 spec:
-  replicas: 3
+  replicas: 10
   selector:
     matchLabels:
       app: logger
@@ -13,8 +19,12 @@ spec:
     metadata:
       labels:
         app: logger
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2112"
     spec:
       containers:
-      - name: logger
-        image: ctovena/logger:0.1
-        imagePullPolicy: Never
+        - name: logger
+          image: ctovena/logger:0.6
+          imagePullPolicy: Never
+          args: ["--logps", "10"]

@@ -2,7 +2,7 @@ PHONY: all build test clean build-image push-image
 .DEFAULT_GOAL := all
 
 IMAGE_PREFIX ?= ctovena
-IMAGE_TAG := 0.1
+IMAGE_TAG := 0.6
 
 all: test build-image
 
