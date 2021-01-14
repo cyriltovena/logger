@@ -3,37 +3,34 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"os"
-	"strconv"
+	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/grafana/loki/pkg/promtail/client"
+	"github.com/grafana/loki-client-go/loki"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/common/server"
+
+	gofakeit "github.com/brianvoe/gofakeit/v6"
+)
+
+const (
+	RFC3164    = "Jan 02 15:04:05"
+	RFC3164Log = "<%d>%s %s %s[%d]: %s"
 )
 
 var (
-	apiURL      = flag.String("url", "", "send log via loki api using the provided url (e.g http://localhost:3100/api/prom/push)")
+	apiURL      = flag.String("url", "http://localhost:3100/loki/api/v1/push", "send log via loki api using the provided url (e.g http://localhost:3100/api/prom/push)")
 	logPerSec   = flag.Int64("logps", 500, "The total amount of log per second to generate.(default 500)")
 	randomPanic = flag.Duration("panic-after", 0, "generate random panics")
+	useJson     = flag.Bool("json", false, "use json payload(default false)")
 )
 
 func init() {
-	lvl := logging.Level{}
-	if err := lvl.Set("debug"); err != nil {
-		panic(err)
-	}
-	util.InitLogger(&server.Config{LogLevel: lvl})
-	flag.Parse()
 	http.Handle("/metrics", promhttp.Handler())
+	flag.Parse()
 }
 
 func main() {
@@ -50,46 +47,20 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if apiURL != nil && *apiURL != "" {
-		logViaAPI(*apiURL, host)
-		return
-	}
-	for {
-		var out io.Writer
-		var stream string
-		switch rand.Intn(2) {
-		case 1:
-			out = os.Stderr
-			stream = "stderr"
-		default:
-			out = os.Stdout
-			stream = "stdout"
-
-		}
-		fmt.Fprintf(out, "ts=%s stream=%s component=%s host=%s lvl=%s msg=%s \n", time.Now().Format(time.RFC3339Nano), stream, randComponent(), host, randLevel(), strconv.Quote(randomLog()))
-		time.Sleep(time.Second / time.Duration(*logPerSec))
-	}
+	logViaAPI(*apiURL, host)
 }
 
 func logViaAPI(apiURL string, hostname string) {
-	u, err := url.Parse(apiURL)
+	cfg, err := loki.NewDefaultConfig(apiURL)
 	if err != nil {
 		panic(err)
 	}
-	c, err := client.New(client.Config{
-		BatchWait: 0,
-		BatchSize: 100,
-		Timeout:   time.Second * 30,
-		BackoffConfig: util.BackoffConfig{
-			MinBackoff: time.Second * 1,
-			MaxBackoff: time.Second * 5,
-			MaxRetries: 5,
-		},
-		URL: flagext.URLValue{URL: u},
-	}, util.Logger)
+	cfg.EncodeJson = *useJson
+	c, err := loki.New(cfg)
 	if err != nil {
 		panic(err)
 	}
+
 	defer c.Stop()
 
 	ticker := time.NewTicker(time.Second / time.Duration(*logPerSec))
@@ -99,80 +70,24 @@ func logViaAPI(apiURL string, hostname string) {
 		_ = c.Handle(
 			model.LabelSet{
 				"hostname":  model.LabelValue(hostname),
-				"service":   randService(),
-				"level":     randLevel(),
 				"component": randComponent(),
-			}, time.Now(), randomLog())
+				"service":   randService(),
+				"app":       "logger",
+			}, time.Now(), NewRFC3164Log(time.Now()))
 	}
 }
 
-func randomLog() string {
-	return loglines[rand.Intn(len(loglines))]
-}
-
-func randLevel() model.LabelValue {
-	return levels[rand.Intn(4)]
-}
-
-func randComponent() model.LabelValue {
-	return components[rand.Intn(5)]
-}
-
-func randService() model.LabelValue {
-	return services[rand.Intn(6)]
-}
-
-var loglines = []string{
-	"failing to cook potatoes",
-	"successfully launched a car in space",
-	"we got here",
-	"err: could not read the manual",
-	"error while reading floppy disk",
-	"failed to reach the cloud, try again on a rainy day",
-	"failed to get an error message",
-	"You're screwed !",
-	"Oups I did it again",
-	"a chicken died during processing",
-	"sorry the server is not in a mood",
-	"Stupidity made this error, not me",
-	"random error happened during compression",
-	"too many foobar variable",
-	"cannot over-write a locked variable.",
-	"foo insists on strongly-typed programming languages",
-	"John Doe solved the Travelling Salesman problem in O(1) time. Here's the pseudo-code: Break salesman into N pieces. Kick each piece to a different city.",
-	"infinite loop succeeded in less than 3 seconds",
-	"could not compute the last digit of PI",
-	"OS not found try installing one",
-	"container sinked in whales",
-	"Don’t use beef stew as a computer password. It’s not stroganoff.",
-	"I used stack overflow to fix this bug",
-	"try googling this error message if it appears again",
-	"change stuff and see what happens",
-	"err: this should never happen",
-}
-
-var levels = []model.LabelValue{
-	"info",
-	"warn",
-	"debug",
-	"error",
-}
-
-var components = []model.LabelValue{
-	"devopsend",
-	"fullstackend",
-	"frontend",
-	"everything-else",
-	"backend",
-}
-
-var services = []model.LabelValue{
-	"potatoes-cart",
-	"phishing",
-	"stateless-database",
-	"random-policies-generator",
-	"cookie-jar",
-	"distributed-unicorn",
+// NewRFC3164Log creates a log string with syslog (RFC3164) format
+func NewRFC3164Log(t time.Time) string {
+	return fmt.Sprintf(
+		RFC3164Log,
+		gofakeit.Number(0, 191),
+		t.Format(RFC3164),
+		strings.ToLower(gofakeit.Username()),
+		gofakeit.Word(),
+		gofakeit.Number(1, 10000),
+		gofakeit.HackerPhrase(),
+	)
 }
 
 func thedeepstack() {
@@ -191,4 +106,29 @@ func deepdown() {
 	default:
 		panic("File read error: open /proc/diskstats: too many open files")
 	}
+}
+
+func randComponent() model.LabelValue {
+	return components[rand.Intn(5)]
+}
+
+func randService() model.LabelValue {
+	return services[rand.Intn(6)]
+}
+
+var components = []model.LabelValue{
+	"devopsend",
+	"fullstackend",
+	"frontend",
+	"everything-else",
+	"backend",
+}
+
+var services = []model.LabelValue{
+	"potatoes-cart",
+	"phishing",
+	"stateless-database",
+	"random-policies-generator",
+	"cookie-jar",
+	"distributed-unicorn",
 }
