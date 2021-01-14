@@ -55,7 +55,6 @@ func logViaAPI(apiURL string, hostname string) {
 	if err != nil {
 		panic(err)
 	}
-	cfg.EncodeJson = *useJson
 	c, err := loki.New(cfg)
 	if err != nil {
 		panic(err)

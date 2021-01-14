@@ -2,7 +2,7 @@ PHONY: all build test clean build-image push-image
 .DEFAULT_GOAL := all
 
 IMAGE_PREFIX ?= ctovena
-IMAGE_TAG := 0.7
+IMAGE_TAG := 0.12
 
 all: test build-image
 
@@ -29,3 +29,6 @@ deploy:
 
 delete:
 	kubectl delete -f deployment.yaml
+
+fmt:
+	jsonnet fmt -i production/logger-mixin/*.libsonnet
